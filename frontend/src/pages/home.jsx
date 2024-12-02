@@ -37,7 +37,9 @@ export function Home() {
   useEffect(() => {
     // Create audio element when guide audio is available
     if (guideAudio) {
-      audioRef.current = new Audio(guideAudio);
+      audioRef.current = new Audio(
+        import.meta.env.VITE_API_BASED_URL + "/resources/" + guideAudio + ".mp3"
+      );
     }
   }, [guideAudio]);
 
@@ -194,6 +196,7 @@ export function Home() {
           setQuestion(res.data.data.response);
         }
         if (res.data.data.isReady == "complete") {
+          setQuestion(null);
           setGuideAudio(res.data.data.audio);
           setGuideTranscription(res.data.data.response);
         }
@@ -225,27 +228,22 @@ export function Home() {
     audioRef.current = null;
   };
 
-  const dynamicText = `Like therapy but with actual results. Share what's on your mind,
-              and I’ll ask a few questions to help you make sense of it Like
-              therapy but with actual results. Share what's on your mind, and
-              I’ll ask a few questions to help you make sense of it Like Like
-              therapy but with actual results. Share what's on your mind, and
-              I’ll ask a few questions to help you make sense of it Like therapy
-              but with actual results. Share what's on your mind, and I’ll ask a
-              few questions to help you make sense of it Like Like therapy but
-              with actual results. Share what's on your mind, and I’ll ask a few
-              questions to help you make sense of it Like therapy but with
-              actual results. Share what's on your mind, and I’ll ask a few
-              questions to help you make sense of it Like`;
-
-  // Function to split the text into parts
-  const splitText = (text) => {
-    return text.split(/(\.|\?|\!)/).filter(Boolean); // Split by punctuation and keep the delimiters
+  const calculateAnimationDuration = (text) => {
+    let duration = Math.ceil(text.length / 10);
+    if (text.length >= 450) {
+      duration -= 20;
+    }
+    if (text.length >= 300 && text.length < 450) {
+      duration -= 10;
+    }
+    if (text.length >= 150 && text.length < 300) {
+      duration -= 5;
+    }
+    return duration; // Adjust duration based on text length
   };
 
-  const calculateAnimationDuration = (text) => {
-    const duration = Math.ceil(text.length / 25);
-    return duration; // Adjust duration based on text length
+  const stylingText = (text) => {
+    return text.replace(/\n/g, "<br>");
   };
 
   return (
@@ -259,24 +257,40 @@ export function Home() {
             />
           </div>
         </div>
-        <div className="text-container relative mx-auto mt-7 h-[50vh] max-w-[400px] overflow-auto p-4">
-          {/* <div className="text-gradient-top absolute left-0 right-0 top-0 z-10 h-24 w-full bg-[#BBDEFB]"></div> */}
-          {/* <div className="text-gradient-bottom absolute bottom-0 left-0 right-0 z-10 h-32 w-full bg-[#C2E2DE]"></div> */}
-          {question ? (
-            <Typography className="text-[32px] font-normal leading-[43px] tracking-[-2px] text-[#8E4585]">
-              {question}
-            </Typography>
-          ) : guideTranscription ? (
-            <Typography className="text-[32px] font-normal leading-[43px] tracking-[-2px] text-[#8E4585]">
-              {guideTranscription}
-            </Typography>
-          ) : (
+        {question || guideTranscription ? (
+          <>
+            <div className="text-gradient-top-1 absolute left-0 right-0 top-12 z-10 h-16 w-full bg-[#BBDEFB]"></div>
+            <div className="text-gradient-top-2 absolute left-0 right-0 top-28 z-10 h-16 w-full bg-[#BBDEFB]"></div>
+            <div className="text-gradient-bottom-1 absolute left-0 right-0 top-[calc(50vh+60px-128px)] z-10 h-16 w-full bg-[#C2E2DE]"></div>
+            <div className="text-gradient-bottom-2 absolute left-0 right-0 top-[calc(50vh+60px-64px)] z-10 h-16 w-full bg-[#C2E2DE]"></div>
+            <div className="relative mx-auto mt-7 h-[50vh] w-full max-w-[400px] overflow-hidden p-4">
+              <div
+                className="text-animation"
+                style={{
+                  animation: `moveUpFade linear ${calculateAnimationDuration(
+                    question || guideTranscription
+                  )}s infinite`,
+                }}
+              >
+                <div className="prose">
+                  <div
+                    dangerouslySetInnerHTML={{
+                      __html: stylingText(question || guideTranscription),
+                    }}
+                    className="text-[32px] font-normal leading-[43px] tracking-[-2px] text-[#8E4585]"
+                  />
+                </div>
+              </div>
+            </div>
+          </>
+        ) : (
+          <div className="relative mx-auto mt-7 h-[50vh] w-full max-w-[400px] overflow-hidden p-4">
             <Typography className="text-[32px] font-normal leading-[43px] tracking-[-2px] text-[#8E4585]">
               Like therapy but with actual results. Share what's on your mind,
               and I’ll ask a few questions to help you make sense of it
             </Typography>
-          )}
-        </div>
+          </div>
+        )}
 
         {guideAudio ? (
           <div className="fixed bottom-7 left-0 right-0">
@@ -284,7 +298,7 @@ export function Home() {
               <Button
                 variant="text"
                 onClick={handlePlayAudio}
-                className="flex items-center justify-center rounded-full p-0"
+                className="flex items-center justify-center rounded-none bg-[transparent] p-0"
               >
                 {isPlaying ? (
                   <Avatar
@@ -326,7 +340,7 @@ export function Home() {
                   );
                 })}
             </div>
-            <div className="mt-9 flex w-full flex-col items-center justify-center">
+            <div className="mt-5 flex w-full flex-col items-center justify-center">
               <Button
                 onClick={handleStartRecording}
                 className={`flex h-[84px] w-[84px] items-center justify-center rounded-full shadow-none hover:shadow-none ${

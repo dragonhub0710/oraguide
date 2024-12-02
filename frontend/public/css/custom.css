@@ -35,34 +35,33 @@ body {
 
 @keyframes moveUpFade {
   0% {
-    transform: translateY(100%);
-    opacity: 0;
-  }
-  25% {
-    opacity: 1;
-  }
-  75% {
-    opacity: 1;
+    transform: translateY(50vh);
   }
   100% {
-    transform: translateY(-100%);
-    opacity: 0;
+    transform: translateY(-110%);
   }
+}
+
+.text-gradient-top-1 {
+  -webkit-mask-image: linear-gradient(#bbdefa, #bbdefb9e);
+  mask-image: linear-gradient(#bbdefa, #bbdefb9e);
+}
+
+.text-gradient-top-2 {
+  -webkit-mask-image: linear-gradient(#bbdefb9e, transparent);
+  mask-image: linear-gradient(#bbdefb9e, transparent);
+}
+
+.text-gradient-bottom-1 {
+  -webkit-mask-image: linear-gradient(transparent, #c2e2de7d);
+  mask-image: linear-gradient(transparent, #c2e2de7d);
+}
+
+.text-gradient-bottom-2 {
+  -webkit-mask-image: linear-gradient(#c2e2de7d, #c2e2de);
+  mask-image: linear-gradient(#c2e2de7d, #c2e2de);
 }
 
 .text-animation {
-  animation: moveUp 5s infinite;
-}
-
-/* src/ScrollableContent.css */
-.text-container {
-  width: 100%; /* Full width */
-  height: 100vh; /* Full viewport height */
-  overflow-y: scroll; /* Enable vertical scrolling */
-  scrollbar-width: none; /* Firefox */
-  -ms-overflow-style: none; /* Internet Explorer and Edge */
-}
-
-.text-container::-webkit-scrollbar {
-  display: none; /* Safari and Chrome */
+  animation: moveUpFade linear 34s infinite;
 }

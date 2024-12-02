@@ -15,7 +15,9 @@ exports.handleQuestions = async (req, res) => {
     const file = req.file;
 
     let transcription = await getTranscription(file.buffer);
+    console.log({ transcription });
     let data = await getResponse(JSON.parse(messages), transcription);
+    console.log({ data });
     if (data.isReady == "complete") {
       const bookId = generateRandomName();
       await generateAudio(bookId, data.response);
