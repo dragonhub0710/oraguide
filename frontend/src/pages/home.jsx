@@ -15,9 +15,13 @@ export function Home() {
   const [isNew, setIsNew] = useState(true);
   const [isPlaying, setIsPlaying] = useState(false);
   const [queue, setQueue] = useState(new Array(30).fill(10));
+  const [containerWidth, setContainerWidth] = useState(0);
+  const [marqueeWidth, setMarqueeWidth] = useState(0);
   const recordingRef = useRef(false);
   const messagesRef = useRef([]);
   const audioRef = useRef(null);
+  const marqueeRef = useRef(null);
+  const containerRef = useRef(null);
 
   const defaultOption = {
     loop: true,
@@ -27,6 +31,20 @@ export function Home() {
       preserveAspectRatio: "xMidYMid slice",
     },
   };
+
+  useEffect(() => {
+    if (containerRef.current) {
+      const containerRect = containerRef.current.getBoundingClientRect();
+      setContainerWidth(containerRect.height);
+    }
+  }, [containerRef]);
+
+  useEffect(() => {
+    if (marqueeRef.current) {
+      const marqueeRect = marqueeRef.current.getBoundingClientRect();
+      setMarqueeWidth(marqueeRect.height);
+    }
+  }, [marqueeRef, question, guideTranscription]);
 
   useEffect(() => {
     if (countTime == 1) {
@@ -228,18 +246,17 @@ export function Home() {
     audioRef.current = null;
   };
 
-  const calculateAnimationDuration = (text) => {
-    let duration = Math.ceil(text.length / 10);
-    if (text.length >= 450) {
-      duration -= 20;
+  const calculateAnimationDuration = () => {
+    let speed = 50;
+    let duration = 0;
+
+    if (marqueeWidth < containerWidth) {
+      duration = containerWidth / speed;
+    } else {
+      duration = marqueeWidth / speed;
     }
-    if (text.length >= 300 && text.length < 450) {
-      duration -= 10;
-    }
-    if (text.length >= 150 && text.length < 300) {
-      duration -= 5;
-    }
-    return duration; // Adjust duration based on text length
+
+    return duration;
   };
 
   const stylingText = (text) => {
@@ -263,22 +280,32 @@ export function Home() {
             <div className="text-gradient-top-2 absolute left-0 right-0 top-28 z-10 h-16 w-full bg-[#BBDEFB]"></div>
             <div className="text-gradient-bottom-1 absolute left-0 right-0 top-[calc(50vh+60px-128px)] z-10 h-16 w-full bg-[#C2E2DE]"></div>
             <div className="text-gradient-bottom-2 absolute left-0 right-0 top-[calc(50vh+60px-64px)] z-10 h-16 w-full bg-[#C2E2DE]"></div>
-            <div className="relative mx-auto mt-7 h-[50vh] w-full max-w-[400px] overflow-hidden p-4">
-              <div
-                className="text-animation"
-                style={{
-                  animation: `moveUpFade linear ${calculateAnimationDuration(
-                    question || guideTranscription
-                  )}s infinite`,
-                }}
-              >
-                <div className="prose">
+            <div
+              ref={containerRef}
+              className="relative mx-auto mt-7 h-[50vh] w-full max-w-[400px] overflow-hidden p-4"
+            >
+              <div className="marquee-wrapper">
+                <div className="marquee-block">
                   <div
-                    dangerouslySetInnerHTML={{
-                      __html: stylingText(question || guideTranscription),
+                    ref={marqueeRef}
+                    className="marquee-inner"
+                    style={{
+                      animation: `moveUpFade linear ${calculateAnimationDuration(
+                        content
+                      )}s infinite`,
                     }}
-                    className="text-[32px] font-normal leading-[43px] tracking-[-2px] text-[#8E4585]"
-                  />
+                  >
+                    <div className="marquee-item">
+                      <div className="prose">
+                        <div
+                          dangerouslySetInnerHTML={{
+                            __html: stylingText(question || guideTranscription),
+                          }}
+                          className="text-[32px] font-normal leading-[43px] tracking-[-2px] text-[#8E4585]"
+                        />
+                      </div>
+                    </div>
+                  </div>
                 </div>
               </div>
             </div>
