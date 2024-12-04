@@ -290,9 +290,7 @@ export function Home() {
                     ref={marqueeRef}
                     className="marquee-inner"
                     style={{
-                      animation: `moveUpFade linear ${calculateAnimationDuration(
-                        content
-                      )}s infinite`,
+                      animation: `moveUpFade linear ${calculateAnimationDuration()}s infinite`,
                     }}
                   >
                     <div className="marquee-item">
