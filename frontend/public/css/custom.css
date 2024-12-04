@@ -94,3 +94,11 @@ body {
 .marquee-item {
   transition: all 0.2s ease-out;
 }
+
+li {
+  color: #8e4585 !important;
+}
+
+::marker {
+  color: #8e4585 !important;
+}
