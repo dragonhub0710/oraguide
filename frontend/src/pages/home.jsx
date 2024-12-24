@@ -1,81 +1,107 @@
 import React, { useEffect, useState, useRef } from "react";
-import { Avatar, Button, Typography } from "@material-tailwind/react";
-import CountdownTimer from "@/widgets/countdowntimer/countdowntimer";
-import axios from "axios";
-import { ReactMic } from "react-mic";
-import Lottie from "react-lottie";
-import Loading_Animation from "../widgets/loading.json";
+import { Avatar, Button } from "@material-tailwind/react";
+import {
+  getVolume,
+  updateQueue,
+  getHeightfromVolume,
+  base64ToArrayBuffer,
+} from "@/utils";
+import UserChatBubble from "@/widgets/chatbubble/userChatBubble";
+import AgentChatBubble from "@/widgets/chatbubble/agentChatBubble";
 
 export function Home() {
-  const [isloading, setIsloading] = useState(false);
-  const [countTime, setCountTime] = useState(120);
-  const [question, setQuestion] = useState(null);
-  const [guideAudio, setGuideAudio] = useState(null);
-  const [guideTranscription, setGuideTranscription] = useState("");
-  const [isNew, setIsNew] = useState(true);
-  const [isPlaying, setIsPlaying] = useState(false);
   const [queue, setQueue] = useState(new Array(30).fill(10));
-  const [containerWidth, setContainerWidth] = useState(0);
-  const [marqueeWidth, setMarqueeWidth] = useState(0);
+  const [isRecording, setIsRecording] = useState(false);
+
   const recordingRef = useRef(false);
   const messagesRef = useRef([]);
-  const audioRef = useRef(null);
-  const marqueeRef = useRef(null);
-  const containerRef = useRef(null);
-
-  const defaultOption = {
-    loop: true,
-    autoplay: true,
-    animationData: Loading_Animation,
-    rendererSettings: {
-      preserveAspectRatio: "xMidYMid slice",
-    },
-  };
+  const messageMarker = useRef(null);
+  const audioBufferQueue = useRef([]);
+  const audioPlayContext = new AudioContext();
+  let isPlaying = false;
 
   useEffect(() => {
-    if (containerRef.current) {
-      const containerRect = containerRef.current.getBoundingClientRect();
-      setContainerWidth(containerRect.height);
-    }
-  }, [containerRef]);
+    let transcript = "";
+    const socket = new WebSocket(import.meta.env.VITE_WEBSOCKET_URL);
 
-  useEffect(() => {
-    if (marqueeRef.current) {
-      const marqueeRect = marqueeRef.current.getBoundingClientRect();
-      setMarqueeWidth(marqueeRect.height);
-    }
-  }, [marqueeRef, question, guideTranscription]);
+    socket.addEventListener("open", async () => {
+      console.log("WebSocket connection opened");
+      start(socket);
+    });
 
-  useEffect(() => {
-    if (countTime == 1) {
-      recordingRef.current = false;
-    }
-  }, [countTime]);
-
-  useEffect(() => {
-    // Create audio element when guide audio is available
-    if (guideAudio) {
-      audioRef.current = new Audio(
-        import.meta.env.VITE_API_BASED_URL + "/resources/" + guideAudio + ".mp3"
-      );
-    }
-  }, [guideAudio]);
-
-  const handleStartRecording = async () => {
-    if (recordingRef.current) {
-      recordingRef.current = false;
-    } else {
-      setIsNew(false);
-      recordingRef.current = true;
-      await navigator.mediaDevices
-        .getUserMedia({ audio: true })
-        .then((stream) => {
-          handleStream(stream);
-        })
-        .catch((error) => {
-          console.error("Error accessing microphone:", error);
+    socket.addEventListener("message", async (event) => {
+      const message = JSON.parse(event.data);
+      if (
+        message.type === "transcript" &&
+        message.transcript !== "" &&
+        message.speech_final
+      ) {
+        messagesRef.current.push({
+          role: "user",
+          content: message.transcript,
         });
+        transcript += message.transcript;
+      }
+      if (message.type === "UtteranceEnd" && transcript !== "") {
+        socket.send(
+          JSON.stringify({
+            content: messagesRef.current,
+          })
+        );
+        transcript = "";
+      }
+      if (message.type === "audio") {
+        audioBufferQueue.current.push(message.data);
+        if (!isPlaying) {
+          isPlaying = true;
+          playAudio();
+        }
+      }
+      if (message.type === "response") {
+        messagesRef.current.push({
+          role: "assistant",
+          content: message.content,
+        });
+      }
+    });
+
+    socket.addEventListener("close", () => {
+      console.log("WebSocket connection closed");
+    });
+  }, []);
+
+  useEffect(() => {
+    if (messageMarker.current) {
+      messageMarker.current.scrollIntoView({
+        behavior: "auto",
+      });
     }
+  }, [messagesRef.current]);
+
+  const playAudio = () => {
+    if (audioBufferQueue.current.length == 0) {
+      isPlaying = false;
+      return;
+    }
+
+    const audio = audioBufferQueue.current.shift();
+    const audioBf = base64ToArrayBuffer(audio);
+    const copiedBuffer = audioBf.slice(0);
+    const sourceNode = audioPlayContext.createBufferSource();
+    audioPlayContext
+      .decodeAudioData(copiedBuffer)
+      .then((audioBuffer) => {
+        sourceNode.buffer = audioBuffer;
+        sourceNode.connect(audioPlayContext.destination);
+        sourceNode.start();
+        sourceNode.addEventListener("ended", () => {
+          sourceNode.disconnect();
+          playAudio(); // Play the next audio in the queue
+        });
+      })
+      .catch((err) => {
+        throw err;
+      });
   };
 
   const handleStream = (stream) => {
@@ -97,8 +123,6 @@ export function Home() {
     handleStartRecording();
 
     function handleStartRecording() {
-      const chunks = [];
-
       function analyzeAudio() {
         if (!recordingRef.current) {
           stopRecording();
@@ -106,11 +130,12 @@ export function Home() {
         }
 
         analyzer.getByteTimeDomainData(dataArray);
+
         const volume = getVolume(dataArray);
 
-        let height = valueToHeight(volume);
+        const height = getHeightfromVolume(volume);
 
-        updateQueue(height);
+        setQueue((prevQueue) => updateQueue(prevQueue, height));
 
         // Continue recording
         setTimeout(() => {
@@ -129,303 +154,120 @@ export function Home() {
         mediaStreamSource.disconnect();
         analyzer.disconnect();
       }
+    }
+  };
 
-      // Event listener for the audio data
-      audioContext.onaudioprocess = (e) => {
-        // Store the audio data in chunks
-        const float32array = e.inputBuffer.getChannelData(0);
-        const chunk = new Float32Array(float32array);
-        chunks.push(chunk);
+  const getMicrophone = async () => {
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      handleStream(stream);
+      return new MediaRecorder(stream);
+    } catch (error) {
+      console.error("Error accessing microphone:", error);
+      throw error;
+    }
+  };
+
+  const openMicrophone = async (microphone, socket) => {
+    return new Promise((resolve) => {
+      microphone.onstart = () => {
+        console.log("WebSocket connection opened");
+        resolve();
       };
-    }
 
-    function getVolume(dataArray) {
-      let sum = 0;
+      microphone.onstop = () => {
+        console.log("WebSocket connection closed");
+      };
 
-      // Calculate the sum of the audio data
-      for (let i = 0; i < dataArray.length; i++) {
-        sum += Math.abs(dataArray[i] - 128);
-      }
+      microphone.ondataavailable = (event) => {
+        if (event.data.size > 0 && socket.readyState === WebSocket.OPEN) {
+          socket.send(event.data);
+        }
+      };
 
-      // Calculate the average volume
-      const average = sum / dataArray.length;
-
-      return average;
-    }
-  };
-
-  // Function to update the queue
-  const updateQueue = (newItem) => {
-    setQueue((prevQueue) => {
-      // Clone the previous queue to avoid direct state mutation
-      let updatedQueue = [...prevQueue];
-
-      // Check if the queue length has reached its max size of 20
-      if (updatedQueue.length >= 30) {
-        // Remove the oldest item (first item in the array) if max size is reached
-        updatedQueue.shift();
-      }
-
-      // Add the new item to the end of the queue
-      updatedQueue.push(newItem);
-      // Return the updated queue
-      return updatedQueue;
+      microphone.start(1000);
     });
   };
 
-  function valueToHeight(value) {
-    const minValue = 0;
-    const maxValue = 5;
-    const minPixel = 10;
-    const maxPixel = 30;
-
-    // Ensure the value is within bounds
-    const boundedValue = Math.min(Math.max(value, minValue), maxValue);
-
-    // Linear scaling calculation
-    const pixelHeight =
-      minPixel +
-      ((boundedValue - minValue) * (maxPixel - minPixel)) /
-        (maxValue - minValue);
-    return pixelHeight;
-  }
-
-  const onStop = (recordedBlob) => {
-    const file = new File([recordedBlob.blob], "recording.wav", {
-      type: "audio/wav",
-    });
-
-    const formData = new FormData();
-    formData.append("file", file);
-    formData.append("messages", JSON.stringify(messagesRef.current));
-    setIsloading(true);
-    axios
-      .post(`${import.meta.env.VITE_API_BASED_URL}/api`, formData)
-      .then((res) => {
-        if (res.data.data.isReady == "none") {
-          messagesRef.current.push({
-            role: "user",
-            content: res.data.transcription,
-          });
-          messagesRef.current.push({
-            role: "assistant",
-            content: res.data.data.response,
-          });
-          setQuestion(res.data.data.response);
-        }
-        if (res.data.data.isReady == "complete") {
-          setQuestion(null);
-          setGuideAudio(res.data.data.audio);
-          setGuideTranscription(res.data.data.response);
-        }
-      })
-      .catch((err) => {
-        console.log(err);
-      })
-      .finally(() => {
-        setIsloading(false);
-      });
+  const closeMicrophone = async (microphone) => {
+    microphone.stop();
   };
 
-  const handlePlayAudio = () => {
-    if (audioRef.current) {
-      if (isPlaying) {
-        audioRef.current.pause();
+  const start = (socket) => {
+    const listenButton = document.querySelector("#record");
+    let microphone;
+
+    console.log("client: waiting to open microphone");
+
+    listenButton.addEventListener("click", async () => {
+      if (!microphone) {
+        try {
+          setIsRecording(true);
+          recordingRef.current = true;
+          microphone = await getMicrophone();
+          await openMicrophone(microphone, socket);
+        } catch (error) {
+          console.error("Error opening microphone:", error);
+        }
       } else {
-        audioRef.current.play();
+        setIsRecording(false);
+        recordingRef.current = false;
+        setQueue(Array(30).fill(10));
+        await closeMicrophone(microphone);
+        microphone = undefined;
       }
-      setIsPlaying(!isPlaying);
-    }
-  };
-
-  const handleBack = () => {
-    setGuideAudio(null);
-    setGuideTranscription(null);
-    setQuestion(null);
-    messagesRef.current = [];
-    audioRef.current = null;
-  };
-
-  const calculateAnimationDuration = () => {
-    let speed = 50;
-    let duration = 0;
-
-    if (marqueeWidth < containerWidth) {
-      duration = containerWidth / speed;
-    } else {
-      duration = marqueeWidth / speed;
-    }
-
-    return duration;
-  };
-
-  const stylingText = (text) => {
-    return text.replace(/\n/g, "<br>");
+    });
   };
 
   return (
     <>
-      <div className="relative flex h-full min-h-[100vh] w-full flex-col bg-gradient-to-b from-[#BBDEFB] to-[#C8E6C9] py-[26px]">
-        <div className="fixed left-0 top-0 w-full">
-          <div className="flex w-full items-center p-4">
-            <Avatar
-              src="/img/logo.svg"
-              className="h-auto w-[70px] rounded-none"
-            />
+      <div className="relative flex h-screen w-full flex-col bg-gradient-to-b from-[#BBDEFB] to-[#C8E6C9] px-[1rem] md:px-[2rem]">
+        <div className="flex h-[4rem] w-full items-center">
+          <a href="/">
+            <Avatar src="/img/logo.svg" className="h-6 w-auto rounded-none" />
+          </a>
+        </div>
+        <div
+          ref={messageMarker}
+          className="flex h-[calc(100vh-16rem)] w-full flex-col gap-y-4 overflow-y-auto"
+        >
+          {messagesRef.current.length > 0 &&
+            messagesRef.current.map((message, i) => {
+              return message.role == "user" ? (
+                <UserChatBubble content={message.content} key={i} />
+              ) : (
+                <AgentChatBubble content={message.content} key={i} />
+              );
+            })}
+        </div>
+        <div className="flex h-[12rem] w-full flex-col items-center py-[1rem]">
+          <div className="flex h-[4rem] w-full items-center justify-center">
+            {isRecording &&
+              queue.map((item, idx) => {
+                const heightInPixels = `${item}px`;
+                return (
+                  <div
+                    key={idx}
+                    className="voice-animation mx-[3px] w-[4px] rounded-md bg-[#8E4585]"
+                    style={{ height: heightInPixels }}
+                  ></div>
+                );
+              })}
+          </div>
+          <div className="flex h-[6rem] w-full items-center justify-center">
+            <Button
+              id="record"
+              className={`flex h-[5rem] w-[5rem] items-center justify-center rounded-full shadow-none hover:shadow-none ${
+                isRecording ? "bg-[#8E4585]" : "bg-[#FF6F61]"
+              }`}
+            >
+              <Avatar
+                src={isRecording ? "/img/pause.svg" : "/img/mic.svg"}
+                className="h-[2rem] w-auto rounded-none"
+              />
+            </Button>
           </div>
         </div>
-        {question || guideTranscription ? (
-          <>
-            <div className="text-gradient-top-1 absolute left-0 right-0 top-12 z-10 h-16 w-full bg-[#BBDEFB]"></div>
-            <div className="text-gradient-top-2 absolute left-0 right-0 top-28 z-10 h-16 w-full bg-[#BBDEFB]"></div>
-            <div className="text-gradient-bottom-1 absolute left-0 right-0 top-[calc(50vh+60px-128px)] z-10 h-16 w-full bg-[#C2E2DE]"></div>
-            <div className="text-gradient-bottom-2 absolute left-0 right-0 top-[calc(50vh+60px-64px)] z-10 h-16 w-full bg-[#C2E2DE]"></div>
-            <div
-              ref={containerRef}
-              className="relative mx-auto mt-7 h-[50vh] w-full max-w-[400px] overflow-hidden p-4"
-            >
-              <div className="marquee-wrapper">
-                <div className="marquee-block">
-                  <div
-                    ref={marqueeRef}
-                    className="marquee-inner"
-                    style={{
-                      animation: `moveUpFade linear ${calculateAnimationDuration()}s infinite`,
-                    }}
-                  >
-                    <div className="marquee-item">
-                      <div className="prose">
-                        <div
-                          dangerouslySetInnerHTML={{
-                            __html: stylingText(question || guideTranscription),
-                          }}
-                          className="text-[32px] font-normal leading-[43px] tracking-[-2px] text-[#8E4585]"
-                        />
-                      </div>
-                    </div>
-                  </div>
-                </div>
-              </div>
-            </div>
-          </>
-        ) : (
-          <div className="relative mx-auto mt-7 h-[50vh] w-full max-w-[400px] overflow-hidden p-4">
-            <Typography className="text-[32px] font-normal leading-[43px] tracking-[-2px] text-[#8E4585]">
-              Like therapy but with actual results. Share what's on your mind,
-              and I’ll ask a few questions to help you make sense of it
-            </Typography>
-          </div>
-        )}
-
-        {guideAudio ? (
-          <div className="fixed bottom-7 left-0 right-0">
-            <div className="flex w-full flex-col items-center justify-center gap-12">
-              <Button
-                variant="text"
-                onClick={handlePlayAudio}
-                className="flex items-center justify-center rounded-none bg-[transparent] p-0"
-              >
-                {isPlaying ? (
-                  <Avatar
-                    src="img/pause.svg"
-                    className="h-auto w-8 rounded-none"
-                  />
-                ) : (
-                  <Avatar
-                    src="img/play.svg"
-                    className="h-auto w-10 rounded-none"
-                  />
-                )}
-              </Button>
-              <Button
-                onClick={handleBack}
-                variant="text"
-                className="rounded-none p-0"
-              >
-                <Avatar src="img/back.svg" className="h-auto w-8" />
-                <Typography className="text-lg font-semibold normal-case text-[#8E4585]">
-                  Back
-                </Typography>
-              </Button>
-            </div>
-          </div>
-        ) : (
-          <div className="fixed bottom-9 left-0 right-0">
-            <div className="flex h-12 w-full items-center justify-center">
-              {recordingRef.current &&
-                queue.length == 30 &&
-                queue.map((item, idx) => {
-                  const heightInPixels = `${item}px`;
-                  return (
-                    <div
-                      key={idx}
-                      className="voice-animation mx-[3px] w-[4px] rounded-md bg-[#8E4585]"
-                      style={{ height: heightInPixels }}
-                    ></div>
-                  );
-                })}
-            </div>
-            <div className="mt-5 flex w-full flex-col items-center justify-center">
-              <Button
-                onClick={handleStartRecording}
-                className={`flex h-[84px] w-[84px] items-center justify-center rounded-full shadow-none hover:shadow-none ${
-                  recordingRef.current || isloading
-                    ? "bg-[#8E4585]"
-                    : "bg-[#FF6F61]"
-                }`}
-              >
-                {recordingRef.current ? (
-                  <CountdownTimer
-                    status={recordingRef.current}
-                    setCountTime={setCountTime}
-                  />
-                ) : isloading ? (
-                  <div className="flex h-12 w-12 items-center justify-center">
-                    <Lottie
-                      options={defaultOption}
-                      isClickToPauseDisabled={true}
-                    />
-                  </div>
-                ) : (
-                  <Avatar
-                    src="img/mic.svg"
-                    className="h-auto w-[36px] rounded-none"
-                  />
-                )}
-              </Button>
-              <div className="mt-9 h-12">
-                {isNew ? (
-                  <>
-                    <Typography className="text-center !font-sans font-medium text-[#8E4585]">
-                      Your thoughts are completely private.
-                    </Typography>
-                    <Typography className="text-center !font-sans font-medium text-[#8E4585]">
-                      Share what’s on your mind.
-                    </Typography>
-                  </>
-                ) : recordingRef.current ? (
-                  <Typography className="text-center !font-sans font-medium text-[#8E4585]">
-                    Listening closely
-                  </Typography>
-                ) : isloading ? (
-                  <Typography className="text-center !font-sans font-medium text-[#8E4585]">
-                    Uncovering insights
-                  </Typography>
-                ) : (
-                  <Typography className="text-center !font-sans font-medium text-[#8E4585]">
-                    Tap to answer
-                  </Typography>
-                )}
-              </div>
-            </div>
-          </div>
-        )}
-
-        <ReactMic
-          record={recordingRef.current}
-          className="hidden"
-          onStop={onStop}
-        />
       </div>
     </>
   );
