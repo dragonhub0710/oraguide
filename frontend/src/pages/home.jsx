@@ -1,4 +1,6 @@
 import React, { useEffect, useState, useRef } from "react";
+import UserChatBubble from "@/widgets/chatbubble/userChatBubble";
+import AgentChatBubble from "@/widgets/chatbubble/agentChatBubble";
 import { Avatar, Button } from "@material-tailwind/react";
 import {
   getVolume,
@@ -10,12 +12,20 @@ import {
 export function Home() {
   const [queue, setQueue] = useState(new Array(30).fill(10));
   const [isRecording, setIsRecording] = useState(false);
-
+  const messageMarker = useRef(null);
   const recordingRef = useRef(false);
   const messagesRef = useRef([]);
   const audioBufferQueue = useRef([]);
   const audioPlayContext = new AudioContext();
   let isPlaying = false;
+
+  useEffect(() => {
+    if (messageMarker.current) {
+      messageMarker.current.scrollIntoView({
+        behavior: "auto",
+      });
+    }
+  }, [messagesRef.current]);
 
   useEffect(() => {
     let transcript = "";
@@ -85,7 +95,9 @@ export function Home() {
         sourceNode.start();
         sourceNode.addEventListener("ended", () => {
           sourceNode.disconnect();
-          playAudio(); // Play the next audio in the queue
+          setTimeout(() => {
+            playAudio(); // Play the next audio in the queue
+          }, 500);
         });
       })
       .catch((err) => {
@@ -215,6 +227,19 @@ export function Home() {
           <a href="/">
             <Avatar src="/img/logo.svg" className="h-6 w-auto rounded-none" />
           </a>
+        </div>
+        <div
+          ref={messageMarker}
+          className="flex h-[calc(100vh-16rem)] w-full flex-col gap-y-4 overflow-y-auto"
+        >
+          {messagesRef.current.length > 0 &&
+            messagesRef.current.map((message, i) => {
+              return message.role == "user" ? (
+                <UserChatBubble content={message.content} key={i} />
+              ) : (
+                <AgentChatBubble content={message.content} key={i} />
+              );
+            })}
         </div>
         <div className="flex h-[12rem] w-full flex-col items-center py-[1rem]">
           <div className="flex h-[4rem] w-full items-center justify-center">

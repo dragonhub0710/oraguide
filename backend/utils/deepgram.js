@@ -7,7 +7,7 @@ const setupDeepgram = (deepgramClient, ws) => {
     smart_format: true, // Apply smart formatting to the output
     sample_rate: 16000,
     interim_results: true, // To get UtteranceEnd, the following must be set
-    utterance_end_ms: "1200",
+    utterance_end_ms: "1000",
     vad_events: true,
   });
   let keepAlive;
