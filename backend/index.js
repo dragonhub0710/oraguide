@@ -112,11 +112,6 @@ wssServer.on("connection", async (ws) => {
   });
 });
 
-// Middleware
-app.use(cors());
-app.use(express.json({ limit: "Infinity" }));
-process.setMaxListeners(0);
-
 app.use("/resources", express.static(path.join(__dirname, "resources")));
 
 // Define Routes
